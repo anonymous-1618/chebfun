@@ -260,9 +260,9 @@ pqh = @(x) feval(p, x)./feval(q, x);
 if ( flag == 0 )
     disp('CF failed');
     xk = chebpts(N + 2, f.domain([1, end]), 1);
-    xk = [xk(round(length(xk)/2)+1:length(xk)) - 1; xk(1:round(length(xk)/2))+1];
-    xk(round(length(xk)/2))=-1;
-    xk = sort(xk);    
+    % xk = [xk(round(length(xk)/2)+1:length(xk)) - 1; xk(1:round(length(xk)/2))+1];
+    % xk(round(length(xk)/2))=-1;
+    % xk = sort(xk);
 end
 
 end
@@ -463,7 +463,9 @@ function [xk, norme, err_handle, flag] = exchange(xk, h, method, f, p, q, rh, Np
 % Rational case:
 
 rr = findExtrema(f, p, q, rh, h, xk);
+%rr = [rr; 0.3;-0.2];
 disp('finished extrema search');
+
 err_handle = @(x) feval(f, x) - rh(x);
 
 % Select exchange method.
@@ -486,6 +488,7 @@ er = er(m);
 repeated = diff(r) == 0;
 r(repeated) = [];
 er(repeated) = [];
+plot(r)
 
 
 % Determine points and values to be kept for the reference set.
@@ -503,12 +506,14 @@ for i = 2:length(r)
     end
 end
 
-%xx = linspace(-1,1,100000);
-%plot(xx, err_handle(xx));
-%hold on
-%plot(s, es,'or');
-%hold off
-%pause()
+xx = linspace(-1,1,100000);
+plot(xx, err_handle(xx));
+hold on
+plot(s, es,'or');
+hold off
+format long
+s
+pause()
 
 % Of the points we kept, choose n + 2 consecutive ones 
 % that include the maximum of the error.

@@ -14,6 +14,8 @@ doms = unique([f.domain(1); xk; f.domain(end)]);
 % Initial trial
 if ( isempty(xk) )
     ek = chebfun(@(x) err_handle(x), doms.', 'splitting', 'on');
+    %e_num = (q.^2).*diff(f) - q.*diff(p) + p.*diff(q);
+    %rts = roots(e_num, 'nobreaks');
     rts = roots(diff(ek), 'nobreaks');
     rts = unique([f.domain(1); rts; f.domain(end)]);
 end
