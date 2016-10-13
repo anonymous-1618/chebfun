@@ -64,6 +64,14 @@ if ( opts.rationalMode )
     [m, n] = adjustDegreesForSymmetries(f, m, n);
 end
 
+% If m=-1, this means f=odd and input (m,n)=(0,n); return constant 0. 
+if ( m == -1 )
+    q = chebfun(1, f.domain([1, end]));
+    p = chebfun(0, f.domain([1, end]));
+    varargout = {p, q, @(x) feval(p, x)./feval(q, x), norm(f,'inf'), []};    
+    return
+end
+
 dom = f.domain([1, end]);
 normf = norm(f);
 
@@ -426,18 +434,22 @@ c(1) = 2*c(1);
 % Check for symmetries and reduce degrees accordingly.
 if ( max(abs(c(2:2:end)))/vscale(f) < eps )   % f is even.
     if ( mod(m, 2) == 1 )
-        m = max(m - 1, 0);
+        %m = max(m - 1, 0);
+        m = m - 1;
     end
     if ( mod(n, 2) == 1 )
-        n = max(n - 1, 0);
+        %n = max(n - 1, 0);
+        n = n - 1;
     end
 elseif ( max(abs(c(1:2:end)))/vscale(f) < eps ) % f is odd.
-    if ( mod(m, 2) == 0 )
-        m = max(m - 1, 0);
+    if ( ~mod(m,2) ) 
+         m = m - 1;  
+% Note: if input was (0,n), detect by m=-1 and return constant function         
     end
-    if ( mod(n, 2) == 0 )
-        n = max(n + 1, 0);
-    end
+    if ( mod(n,2) )
+         n = n - 1;
+    end   
+
 end
 
 end
