@@ -76,8 +76,11 @@ end
 % Initial values for some parameters.
 iter = 0;                 % Iteration count.
 deltaLevelError = max(normf, eps);  % Value for stopping criterion.
+deltaLevelErrorRel = deltaLevelError;
 deltamin = inf;           % Minimum error encountered.
-deltaReference = 1;                % Maximum correction to trial reference.
+deltaminRel = inf;
+deltaReference = 1;       % Maximum correction to trial reference.
+xkPrev = [];
 
 N = m + n;
 % Compute an initial reference set to start the algorithm.
@@ -99,7 +102,7 @@ end
 x0 = xk;
 h0 = 0;
 % Run the main algorithm.
-while ( (deltaLevelError/normf > opts.tol) && (iter < opts.maxIter) && (deltaReference > 0) )
+while ( (deltaLevelErrorRel > opts.tol) && (iter < opts.maxIter) && (deltaReference > 0) )
 
     [p, q, rh, pqh, h, interpSuccess] = computeTrialFunctionRational(f, xk, m, n);      
     
@@ -112,7 +115,7 @@ while ( (deltaLevelError/normf > opts.tol) && (iter < opts.maxIter) && (deltaRef
     %perform modiffications to the previous reference set until the current
     %interpolant has no poles on the approximation domain (technically,
     %we're not doing that just yet!!!)
-    if (interpSuccess == 0)
+    if (interpSuccess == 0 && ~isempty(xkPrev))
         disp('perturb current reference set');
         % xk is the current reference set that is causing us problems
         [~, pos] = max(abs(feval(errPrev, xk)));
@@ -137,7 +140,7 @@ while ( (deltaLevelError/normf > opts.tol) && (iter < opts.maxIter) && (deltaRef
         [p, q, rh, pqh, h, interpSuccess] = computeTrialFunctionRational(f, xkNew, m, n);
         
         modifCounter = 0;
-        while (interpSuccess == 0 & (modifCounter <12))
+        while (interpSuccess == 0 && (modifCounter <12))
             xkNew = xkPrev;
             modifCounter = modifCounter+1;
             xkNew(closeIdx) = (1/2^modifCounter)*xk(pos) + (1 - 1/2^modifCounter)*xkPrev(closeIdx);
@@ -163,7 +166,7 @@ while ( (deltaLevelError/normf > opts.tol) && (iter < opts.maxIter) && (deltaRef
     if ( h == 0 )
         h = 1e-19;
     end
-    %xkPrev = xk;
+
     % Update the exchange set using the Remez algorithm with full exchange.   
     [xk, err, err_handle] = exchange(xk, h, 2, f, p, q, rh, N + 2, opts);
     errPrev = err_handle;
@@ -171,9 +174,10 @@ while ( (deltaLevelError/normf > opts.tol) && (iter < opts.maxIter) && (deltaRef
     % Update max. correction to trial reference and stopping criterion.
     deltaReference = max(abs(x0 - xk));
     deltaLevelError = err - abs(h);
+    deltaLevelErrorRel = deltaLevelError / abs(h);
 
     % Store approximation with minimum norm.
-    if ( deltaLevelError < deltamin )
+    if ( deltaLevelErrorRel < deltaminRel )
         pmin = p;
         if ( n > 0 )
             qmin = q;
@@ -181,6 +185,7 @@ while ( (deltaLevelError/normf > opts.tol) && (iter < opts.maxIter) && (deltaRef
 
         errmin = err;
         xkmin = xk;
+        deltaminRel = deltaLevelErrorRel;
         deltamin = deltaLevelError;
     end
 
@@ -354,7 +359,8 @@ end
 
 % Parse name-value option pairs.
 N = m + n;
-opts.tol = 1e-16*(N^2 + 10); % Relative tolerance for deciding convergence.
+opts.tol = 1e-5;             % Tolerance for deciding convergence (~five
+                             % digits of accuracy in the minimax error)
 opts.maxIter = 40;           % Maximum number of allowable iterations.
 opts.displayIter = false;    % Print output after each iteration.
 opts.plotIter = false;       % Plot approximation at each iteration.
@@ -463,14 +469,12 @@ function [xk, norme, err_handle, flag] = exchange(xk, h, method, f, p, q, rh, Np
 % Rational case:
 
 rr = findExtrema(f, p, q, rh, h, xk);
-%rr = [rr; 0.3;-0.2];
-disp('finished extrema search');
 
 err_handle = @(x) feval(f, x) - rh(x);
 
 % Select exchange method.
 if ( method == 1 )                           % One-point exchange.
-    [ignored, pos] = max(abs(feval(err_handle, rr)));
+    [~, pos] = max(abs(feval(err_handle, rr)));
     pos = pos(1);
 else                                           % Full exchange.
     pos = find(abs(err_handle(rr)) >= abs(h)); % Values above levelled error
@@ -506,13 +510,12 @@ for i = 2:length(r)
     end
 end
 
-xx = linspace(-1,1,100000);
+xx = linspace(f.domain(1),f.domain(end),1000000);
 plot(xx, err_handle(xx));
 hold on
-plot(s, es,'or');
+plot(s, err_handle(s),'or');
 hold off
 format long
-s
 pause()
 
 % Of the points we kept, choose n + 2 consecutive ones 
@@ -520,8 +523,6 @@ pause()
 [norme, index] = max(abs(es));
 d = max(index - Npts + 1, 1);
 if ( Npts <= length(s) )
-    %disp('Large candidate set:');
-    %length(s)
     xk = s(d:d+Npts-1);
     flag = 1;
 else
@@ -529,20 +530,6 @@ else
     flag = 0;
 end
 
-end
-
-function xk = makeNewReference(x0, x1)
-
-xk = x0;
-if ( length(x0) ~= length(x1) )
-    error('makeNewReference:not equal points in both references')    
-end
-
-for i = 1:length(x0)
-    % Find the index of the nearest point:
-    [~, idx] = min(abs(x1-x0(i)));
-    xk(i) = x0(i) + (x1(idx) - x0(i))/2;
-end
 end
 
 

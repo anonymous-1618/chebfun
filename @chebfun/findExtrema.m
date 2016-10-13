@@ -7,37 +7,33 @@ function rts = findExtrema(f, p, q, rh, h, xk)
 
 err_handle = @(x) feval(f, x) - rh(x);
 rts = [];
-%doms = unique(sort([f.domain(:); xk]));
+
 doms = unique([f.domain(1); xk; f.domain(end)]);
-%doms = sort([doms; 0]);
 
 % Initial trial
 if ( isempty(xk) )
+    
+    % TODO: there is generally a warning here that the function
+    % was not resolved when dealing with more complicated instances
+    % (i.e., splitting on was required to successfuly work with f).
+    % Can we eliminate it?
     ek = chebfun(@(x) err_handle(x), doms.', 'splitting', 'on');
+    rts = roots(diff(ek), 'nobreaks');
+
+    % The following lines failed sometimes to find all the local extrema
+    % of the error function of f, when f is composed of several pieces
+    
     %e_num = (q.^2).*diff(f) - q.*diff(p) + p.*diff(q);
     %rts = roots(e_num, 'nobreaks');
-    rts = roots(diff(ek), 'nobreaks');
+
+    
     rts = unique([f.domain(1); rts; f.domain(end)]);
 end
    
 if ( ~isempty(xk) )
     for k = 1:length(doms)-1
-        ek = chebfun(@(x) err_handle(x), [doms(k), doms(k+1)], 200, 'eps', 1e-9);     
+        ek = chebfun(@(x) err_handle(x), [doms(k), doms(k+1)], 200, 'eps', 1e-12);     
         ek = simplify(ek);
-        %plot(ek)
-        %length(ek)
-    %         if (length(ek) > 4000 )
-    %             %plot(ek);
-    %             %disp( 'reconstructing' )
-    %             ek = chebfun(@(x) err_handle(x), [doms(k), doms(k+1)], 'eps', 1e-9 ); 
-    %             %length(ek)    
-    %             %plot(ek)
-    %             %drawnow
-    %             %pause()
-    %         end
-        %disp('roots');
-        %roots(diff(ek), 'nobreaks')
-        %pause()
         rts = [rts; roots(diff(ek), 'nobreaks')];  %#ok<AGROW>
     end    
 end
