@@ -30,18 +30,19 @@ end
 
 if ( isempty(pos) )
     disp('poles on the approximation domain');
+    disp('still going to try and continue');
     
     % The following commented lines pick a vector which has the
     % smallest number of sign changes
     
-    %[~, pos] = max(abs(sum(sign(qk_all))));
-    %plusSign = sum(qk_all(:, pos) > 0);
-    %minusSign = sum(qk_all(:, pos) < 0);
-    %if ( plusSign > minusSign )
-    %    qk_all(:, pos) = abs(qk_all(:, pos));
-    %else
-    %    qk_all(:, pos) = -abs(qk_all(:, pos));
-    %end
+    [~, pos] = max(abs(sum(sign(qk_all))));
+    plusSign = sum(qk_all(:, pos) > 0);
+    minusSign = sum(qk_all(:, pos) < 0);
+    if ( plusSign > minusSign )
+        qk_all(:, pos) = abs(qk_all(:, pos));
+    else
+        qk_all(:, pos) = -abs(qk_all(:, pos));
+    end
     
     interpSuccess = 0;
 end
@@ -89,7 +90,7 @@ if (interpSuccess == 1)
             sum(v(:,i))
         end
         error('Nullspace of weight generation matrix has dimension > 1');
-        % v = v(:,size(v,2));
+        %v = v(:,size(v,2));
     end
     rh = @(t) bary(t, fx, xx, v);
     pqh = @(x) p(x)./q(x);

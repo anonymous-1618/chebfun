@@ -92,13 +92,20 @@ xkPrev = [];
 
 N = m + n;
 % Compute an initial reference set to start the algorithm.
-[xk, pmin, qmin] = getInitialReference(f, m, n, N);
+[xk, pmin, qmin, successFlag, deltaAux, deltaRelAux] = getInitialReference(f, m, n, N);
+
 
 if ( isempty(qmin) )
     qmin = chebfun(1, f.domain([1, end]));
 end
 
+if (successFlag ~= 0)
+    deltaLevelErrorRel = deltaRelAux;
+    deltaLevelError = deltaAux;
 
+    errmin = deltaLevelError;
+    xkmin = xk;
+end
 
 % Print header for text output display if requested.
 if ( opts.displayIter )
@@ -226,7 +233,7 @@ xk = xkmin;
 deltaLevelError = deltamin;
 
 % Warn the user if we failed to converge.
-if ( deltaLevelError/normf > opts.tol )
+if ( deltaLevelErrorRel > opts.tol )
     warning('CHEBFUN:CHEBFUN:remez:convergence', ...
         ['Remez algorithm did not converge after ', num2str(iter), ...
          ' iterations to the tolerance ', num2str(opts.tol), '.']);
@@ -250,32 +257,26 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Functions implementing the core part of the algorithm.
 
-function [xk, p, q] = getInitialReference(f, m, n, N)
+function [xk, p, q, flag, deltaErr, deltaErrRel] = getInitialReference(f, m, n, N)
 
 % If doing rational Remez, get initial reference from trial function generated
 % by CF or Chebyshev-Pade.
-flag = 0;
-a = f.domain(1);
-b = f.domain(end);
 
 if ( numel(f.funs) == 1 )
     %[p, q] = chebpade(f, m, n);
     [p, q] = cf(f, m, n);
 else
-    %[p, q] = chebpade(f, m, n, 5*N);
+    %[p, q] = chebpade(f, m, n, 10*N);
     [p, q] = cf(f, m, n, 100*N);
 end
 pqh = @(x) feval(p, x)./feval(q, x);
-[xk, err, e, flag] = exchange([], 0, 2, f, p, q, pqh, N + 2);
+[xk, ~, ~, flag, deltaErr, deltaErrRel] = exchange([], 0, 2, f, p, q, pqh, N + 2);
 
 % If the above procedure failed to produce a reference
 % with enough equioscillation points, just use the Chebyshev points.
 if ( flag == 0 )
     disp('CF failed');
     xk = chebpts(N + 2, f.domain([1, end]), 1);
-    % xk = [xk(round(length(xk)/2)+1:length(xk)) - 1; xk(1:round(length(xk)/2))+1];
-    % xk(round(length(xk)/2))=-1;
-    % xk = sort(xk);
 end
 
 end
@@ -367,7 +368,7 @@ end
 
 % Parse name-value option pairs.
 N = m + n;
-opts.tol = 1e-5;             % Tolerance for deciding convergence (~five
+opts.tol = 1e-4;             % Tolerance for deciding convergence (~five
                              % digits of accuracy in the minimax error)
 opts.maxIter = 40;           % Maximum number of allowable iterations.
 opts.displayIter = false;    % Print output after each iteration.
@@ -455,7 +456,7 @@ end
 end
 
 
-function [xk, norme, err_handle, flag] = exchange(xk, h, method, f, p, q, rh, Npts, opts)
+function [xk, norme, err_handle, flag, deltaErr, deltaErrRel] = exchange(xk, h, method, f, p, q, rh, Npts, opts)
 %EXCHANGE   Modify an equioscillation reference using the Remez algorithm.
 %   EXCHANGE(XK, H, METHOD, F, P, Q, W) performs one step of the Remez algorithm
 %   for the best rational approximation of the CHEBFUN F of the target function
@@ -528,11 +529,14 @@ hold on
 plot(s, err_handle(s),'or');
 hold off
 format long
+%abs(err_handle(s))
 pause()
 
 % Of the points we kept, choose n + 2 consecutive ones 
 % that include the maximum of the error.
 [norme, index] = max(abs(es));
+deltaErr = max(abs(es)) - min(abs(es));
+deltaErrRel = deltaErr / max(abs(es));
 d = max(index - Npts + 1, 1);
 if ( Npts <= length(s) )
     xk = s(d:d+Npts-1);
