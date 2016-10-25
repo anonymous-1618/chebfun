@@ -5,6 +5,10 @@ N = m + n;
 sigma = ones(N + 2, 1);
 sigma(2:2:end) = -1;
 
+fk = feval(f, xk);
+
+% comment out the chebfun way
+%{
 % Orthogonal matrix with respect to <,>_{xk}.
 [C, ignored] = qr(fliplr(vander(xk)));
 
@@ -94,6 +98,133 @@ end
 %    interpSuccess = 1;
 %end
 
+%}
+
+
+% start bary
+
+% poles in the barycentric representation 
+%xsupport = (xk(1:end-1)+xk(2:end))/2;
+xsupport = (xk(1:2:end-1)+xk(2:2:end))/2;
+%xleja = leja_ordering(xsupport);xsupport = xleja(1:n+1);
+
+C = zeros(length(xk),length(xsupport)); % Vandermonde (or basis) matrix
+for ii = 1:length(xk)
+C(ii,:) = 1./(xk(ii)-xsupport);
+end
+
+AA = [C(:,1:m+1) diag(fk)*C(:,1:n+1)]; % solving Fq (1 pm h(sign)) = p 
+BB = -diag(sigma)*[zeros(length(xk),m+1) C(:,1:n+1)];
+
+doproj = 0;
+diagscaleR = 0; 
+diagscaleL = 0;
+
+if doproj
+[Q,R] = qr(AA(:,1:m+1));
+Qperp = Q(:,m+2:end);
+AA = Qperp'*AA(:,m+2:end);
+BB = Qperp'*BB(:,m+2:end);
+end
+
+if diagscaleR
+% right diagonal scaling
+for ii = 1:size(AA,1)
+   div = norm([AA(:,ii);BB(:,ii)]);
+   AA(:,ii) = AA(:,ii)/div; 
+   BB(:,ii) = BB(:,ii)/div;
+   Diagscale(ii) = div;             
+end
+end
+
+
+if diagscaleL
+% left diagonal scaling
+for ii = 1:size(AA,2)
+   div = norm([AA(ii,:) BB(ii,:)]);
+   AA(ii,:) = AA(ii,:)/div; 
+   BB(ii,:) = BB(ii,:)/div;
+end
+end
+
+[v,d,w] = eig(AA,BB);
+
+vini = v;
+    
+if diagscaleR % scale back eigvec
+    v = diag(Diagscale)\v;
+end
+
+if doproj
+qcheck = C(:,1:n+1)*v;
+pos = length(d)-1;
+condei = norm(w(:,pos))*norm(v(:,pos))./(w(:,pos)'*BB*vini(:,pos))
+end
+
+%{
+   %q = @(x) q(x) + v(m+1+ii,pos)./(x-xsupport(ii));
+   pos = [];
+   for ii = 1:size(d,1)
+    ww = baryroots_yuji(xsupport,v(m+1+1:end,ii));
+    if abs(d(ii,ii))<1
+    if sum(imag(ww)==0 & real(ww)<1 & real(ww)>-1)==0
+        pos = [pos ii]
+    end
+    end
+   end
+   pos1 = pos;
+%}
+   
+qk_all = C(:,1:n+1)*v(m+1+1:end,:); 
+node = @(z) prod(z-xsupport); % needed to check sign 
+for ii = 1:length(xk)
+nodevec(ii) = node(xk(ii));
+end
+pos =  find(abs(sum(sign(diag(nodevec)*qk_all))) == N + 2 & abs(sum(qk_all))>1e-4);  % Sign changes of each qk.
+
+
+if isempty(pos)
+    keyboard
+end
+pos = pos(1); % if more than 1 take first (stupid but try)
+qknew = qk_all(:,pos);
+
+
+
+warn = 0;
+if ( isempty(pos) || (length(pos) > 1))
+    warning('CHEBFUN:CHEBFUN:remez:badGuess', ...
+        'Trial interpolant too far from optimal');
+    p = [];q = []; h = [];
+    warn = 1; 
+    keyboard
+    return
+end
+
+qk = diag(nodevec)*qknew;       % Keep qk with unchanged sign.
+h = d(pos, pos);          % Levelled reference error.
+pk = (fk + h*sigma).*qk;  % Vals. of r*q in reference.
+
+condei = norm(w(:,pos))*norm(vini(:,pos))./(w(:,pos)'*BB*vini(:,pos))
+
+%keyboard
+
+h = -h; 
+h
+
+
+q = @(x) 0;
+for ii = 1:length(xsupport)
+   q = @(x) q(x) + v(m+1+ii,pos)./(x-xsupport(ii));
+end
+q = @(x)-q(x);
+p = @(x) 0;
+for ii = 1:length(xsupport)
+   p = @(x) p(x) + v(ii,pos)./(x-xsupport(ii));
+end
+
+rh = @(x) p(x)./q(x); 
+p = nan; q = nan; pqh = nan; interpSuccess = 1; 
 
 end
 
