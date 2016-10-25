@@ -180,7 +180,7 @@ node = @(z) prod(z-xsupport); % needed to check sign
 for ii = 1:length(xk)
 nodevec(ii) = node(xk(ii));
 end
-pos =  find(abs(sum(sign(diag(nodevec)*qk_all))) == N + 2 & abs(sum(qk_all))>1e-4);  % Sign changes of each qk.
+pos =  find(abs(sum(sign(diag(nodevec)*qk_all))) == N + 2 & sum(abs(qk_all))>1e-4);  % Sign changes of each qk.
 
 
 if isempty(pos)
