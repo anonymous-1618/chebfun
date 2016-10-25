@@ -1,4 +1,4 @@
-function varargout = remez(varargin)
+function varargout = remez(f, varargin)
 %REMEZ   Best polynomial or rational approximation for real valued chebfuns.
 %   P = REMEZ(F, M) computes the best polynomial approximation of degree M to
 %   the real CHEBFUN F in the infinity norm using the Remez algorithm.
@@ -45,49 +45,53 @@ function varargout = remez(varargin)
 %
 % See also CF.
 
-% Copyright 2015 by The University of Oxford and The Chebfun Developers.
+% Copyright 2016 by The University of Oxford and The Chebfun Developers.
 % See http://www.chebfun.org/ for Chebfun information.
-
-if ( nargin < 2 ) 
-    error('CHEBFUN:CHEBFUN:remez:nargin', ...
-        'Not enough input arguments.');
-else
-    [f, m, n, opts] = parseInput(varargin{:});
-end
-
-if ( isempty(f) ) 
-    varargout = {f};
-    return;
-end
-
-if ( opts.rationalMode )
-    [m, n] = adjustDegreesForSymmetries(f, m, n);
-end
 
 dom = f.domain([1, end]);
 normf = norm(f);
 
+if ( ~isreal(f) )
+    error('CHEBFUN:CHEBFUN:remez:real', ...
+        'REMEZ only supports real valued functions.');
+end
+
+if ( numColumns(f) > 1 )
+    error('CHEBFUN:CHEBFUN:remez:quasi', ...
+        'REMEZ does not currently support quasimatrices.');
+end
+
+if ( issing(f) )
+    error('CHEBFUN:CHEBFUN:remez:singularFunction', ...
+        'REMEZ does not currently support functions with singularities.');
+end
+
+% Parse the inputs.
+[m, n, N, rationalMode, opts] = parseInputs(f, varargin{:});
+
+% If m=-1, this means f=odd and input (m,n)=(0,n); return constant 0. 
+if ( m == -1 )
+    q = chebfun(1, dom);
+    p = chebfun(0, dom);
+    varargout = {p, q, @(x) feval(p, x)./feval(q, x), norm(f,'inf'), []};    
+    return
+end
+
 % With zero denominator degree, the denominator polynomial is trivial.
-if ( n == 0 ) 
+if ( n == 0 )
+    qk = 1;
     q = chebfun(1, dom);
     qmin = q;
 end
 
 % Initial values for some parameters.
 iter = 0;                 % Iteration count.
-deltaLevelError = max(normf, eps);  % Value for stopping criterion.
+delta = max(normf, eps);  % Value for stopping criterion.
 deltamin = inf;           % Minimum error encountered.
 diffx = 1;                % Maximum correction to trial reference.
 
-N = m + n;
 % Compute an initial reference set to start the algorithm.
-[xk, pmin, qmin] = getInitialReference(f, m, n, N);
-if ( isempty(qmin) )
-    qmin = chebfun(1, f.domain([1, end]));
-end
-if ( n > 0 )
-%    h = norm(feval(f, xk) - feval(pmin,xk)./feval(qmin,xk));
-end
+xk = getInitialReference(f, m, n, N);
 xo = xk;
 
 % Print header for text output display if requested.
@@ -95,43 +99,37 @@ if ( opts.displayIter )
     disp('It.     Max(|Error|)       |ErrorRef|      Delta ErrorRef      Delta Ref')
 end
 
-
-
 % Run the main algorithm.
-while ( (deltaLevelError/normf > opts.tol) && (iter < opts.maxIter) && (diffx > 0) )
+while ( (delta/normf > opts.tol) && (iter < opts.maxIter) && (diffx > 0) )
     fk = feval(f, xk);     % Evaluate on the exchange set.
-    w = baryWeights(xk);   % Barycentric weights for exchange set.    
-        
+    w = baryWeights(xk);   % Barycentric weights for exchange set.
+
     % Compute trial function and levelled reference error.
     if ( n == 0 )
         [p, h] = computeTrialFunctionPolynomial(fk, xk, w, m, N, dom);
-        opts.rh = [];
     else
-        [p, q, h, rh, pqh] = computeTrialFunctionRational(fk, xk, w, m, n, N, dom);
-        opts.rh = rh;
-        opts.pqh = pqh;
-        opts.f = f;        
+        [p, q, h] = computeTrialFunctionRational(fk, xk, w, m, n, N, dom);
     end
-    
+
     % Perturb exactly-zero values of the levelled error.
     if ( h == 0 )
         h = 1e-19;
     end
 
-    % Update the exchange set using the Remez algorithm with full exchange.   
-    [xk, err, err_handle] = exchange(xk, h, 2, f, p, q, N + 2, opts);
+    % Update the exchange set using the Remez algorithm with full exchange.
+    [xk, err, err_handle] = exchange(xk, h, 2, f, p, q, N + 2);
 
     % If overshoot, recompute with one-point exchange.
     if ( err/normf > 1e5 )
-        [xk, err, err_handle] = exchange(xo, h, 1, f, p, q, N + 2, opts);
+        [xk, err, err_handle] = exchange(xo, h, 1, f, p, q, N + 2);
     end
 
     % Update max. correction to trial reference and stopping criterion.
     diffx = max(abs(xo - xk));
-    deltaLevelError = err - abs(h);
+    delta = err - abs(h);
 
     % Store approximation with minimum norm.
-    if ( deltaLevelError < deltamin )
+    if ( delta < deltamin )
         pmin = p;
         if ( n > 0 )
             qmin = q;
@@ -139,21 +137,16 @@ while ( (deltaLevelError/normf > opts.tol) && (iter < opts.maxIter) && (diffx > 
 
         errmin = err;
         xkmin = xk;
-        deltamin = deltaLevelError;
+        deltamin = delta;
     end
 
     % Display diagnostic information as requested.
     if ( opts.plotIter )
         doPlotIter(xo, xk, err_handle, dom);
-        pause();
     end
 
     if ( opts.displayIter )
-        doDisplayIter(iter, err, h, deltaLevelError, normf, diffx);
-    end
-    
-    if ( opts.demoMode )
-        pause
+        doDisplayIter(iter, err, h, delta, normf, diffx);
     end
 
     xo = xk;
@@ -164,27 +157,73 @@ end
 p = pmin;
 err = errmin;
 xk = xkmin;
-deltaLevelError = deltamin;
+delta = deltamin;
 
 % Warn the user if we failed to converge.
-if ( deltaLevelError/normf > opts.tol )
+if ( delta/normf > opts.tol )
     warning('CHEBFUN:CHEBFUN:remez:convergence', ...
         ['Remez algorithm did not converge after ', num2str(iter), ...
          ' iterations to the tolerance ', num2str(opts.tol), '.']);
 end
 
 % Form the outputs.
-status.delta = deltaLevelError/normf;
+status.delta = delta/normf;
 status.iter = iter;
 status.diffx = diffx;
 status.xk = xk;
 
 p = simplify(p);
-if ( opts.rationalMode )
+if ( rationalMode )
     q = simplify(qmin);
     varargout = {p, q, @(x) feval(p, x)./feval(q, x), err, status};
 else
     varargout = {p, err, status};
+end
+
+end
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Input parsing.
+
+function [m, n, N, rationalMode, opts] = parseInputs(f, varargin)
+
+% Detect polynomial / rational approximation type and parse degrees.
+if ( ~mod(nargin, 2) ) % Even number of inputs --> polynomial case.
+    m = varargin{1};
+    n = 0;
+    rationalMode = false;
+    varargin = varargin(2:end);
+else                   % Odd number of inputs --> rational case.
+    [m, n] = adjustDegreesForSymmetries(f, varargin{1}, varargin{2});
+    rationalMode = true;
+    varargin = varargin(3:end);
+end
+
+N = m + n;
+
+% Parse name-value option pairs.
+if rationalMode
+opts.tol = 1e-16*(10*N^2 + 100); % Relative tolerance for deciding convergence.    
+else
+opts.tol = 1e-16*(N^2 + 10); % Polynomial case is much more robust. 
+end
+opts.maxIter = 20;           % Maximum number of allowable iterations.
+opts.displayIter = false;    % Print output after each iteration.
+opts.plotIter = false;       % Plot approximation at each iteration.
+
+for k = 1:2:length(varargin)
+    if ( strcmpi('tol', varargin{k}) )
+        opts.tol = varargin{k+1};
+    elseif ( strcmpi('maxiter', varargin{k}) )
+        opts.maxIter = varargin{k+1};
+    elseif ( strcmpi('display', varargin{k}) )
+        opts.displayIter = true;
+    elseif ( strcmpi('plotfcns', varargin{k}) )
+        opts.plotIter = true;
+    else
+        error('CHEBFUN:CHEBFUN:remez:badInput', ...
+            'Unrecognized sequence of input parameters.')
+    end
 end
 
 end
@@ -208,23 +247,26 @@ end
 
 % Compute the Chebyshev coefficients.
 c = chebcoeffs(f, length(f));
-c(1) = 2*c(1);
+c(end) = 2*c(end);
 
 % Check for symmetries and reduce degrees accordingly.
 if ( max(abs(c(2:2:end)))/vscale(f) < eps )   % f is even.
     if ( mod(m, 2) == 1 )
-        m = max(m - 1, 0);
+        m = m - 1;
     end
     if ( mod(n, 2) == 1 )
-        n = max(n - 1, 0);
+        n = n - 1;
     end
-elseif ( max(abs(c(1:2:end)))/vscale(f) < eps ) % f is odd.
-    if ( mod(m, 2) == 0 )
-        m = max(m - 1, 0);
-    end
-    if ( mod(n, 2) == 0 )
-        n = max(n + 1, 0);
-    end
+
+elseif ( max(abs(c(1:2:end)))/vscale(f) < eps ) % f is odd. obtain (odd,even) type
+     if ( ~mod(m,2) ) 
+         m = m - 1;  
+% Note: if input was (0,n), detect by m=-1 and return constant function         
+     end
+     if ( mod(n,2) )
+         n = n - 1;
+     end   
+
 end
 
 end
@@ -232,44 +274,29 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Functions implementing the core part of the algorithm.
 
-function [xk, p, q] = getInitialReference(f, m, n, N)
+function xk = getInitialReference(f, m, n, N)
 
 % If doing rational Remez, get initial reference from trial function generated
 % by CF or Chebyshev-Pade.
 flag = 0;
-a = f.domain(1);
-b = f.domain(end);
-
 if ( n > 0 )
     if ( numel(f.funs) == 1 )
         %[p, q] = chebpade(f, m, n);
         [p, q] = cf(f, m, n);
     else
         %[p, q] = chebpade(f, m, n, 5*N);
-        [p, q] = cf(f, m, n, 100*N);
+        [p, q] = cf(f, m, n, 5*N);
     end
-    opts = struct;
-    opts.rh = [];
-    [xk, err, e, flag] = exchange([], 0, 2, f, p, q, N + 2, opts);
+    [xk, err, e, flag] = exchange([], 0, 2, f, p, q, N + 2);
 end
-% REMOVE THIS:
-%flag = 0;
 
 % In the polynomial case or if the above procedure failed to produce a reference
 % with enough equioscillation points, just use the Chebyshev points.
 if ( flag == 0 )
-    xk = chebpts(N + 2, f.domain([1, end]), 1);
-    xk = [xk(round(length(xk)/2)+1:length(xk)) - 1; xk(1:round(length(xk)/2))+1];
-    xk(round(length(xk)/2))=-1;
-    xk = sort(xk);
-    %disp('here!');
-    %mid = round(length(xk)/2);
-    %xk = [xk(1:mid)+1; xk(mid+1:end)-1];
-    %xk = sort(xk);
-    p = [];
-    q = [];        
+    xk = chebpts(N + 2, f.domain([1, end]));
 end
 
+xo = xk;
 
 end
 
@@ -287,7 +314,7 @@ p = chebfun(@(x) bary(x, pk, xk, w), dom, m + 1);
 
 end
 
-function [p, q, h, rh, pqh] = computeTrialFunctionRational(fk, xk, w, m, n, N, dom)
+function [p, q, h] = computeTrialFunctionRational(fk, xk, w, m, n, N, dom)
 
 % Vector of alternating signs.
 sigma = ones(N + 2, 1);
@@ -307,59 +334,29 @@ ZR = C(:,m+2:N+2).'*diag(sigma)*C(:,1:n+1);
 qk_all = C(:,1:n+1)*v;
 pos =  find(abs(sum(sign(qk_all))) == N + 2);  % Sign changes of each qk.
 
-if ( (length(pos) > 1) )
-    error('CHEBFUN:CHEBFUN:remez:eigensolver', ...
-        'More than one vector doesn''t change sign');
-end
-
-if ( isempty(pos) )    
-    [~, pos] = max(abs(sum(sign(qk_all))));
-    plusSign = sum(qk_all(:, pos) > 0);
-    minusSign = sum(qk_all(:, pos) < 0);
-    if ( plusSign > minusSign )
-        qk_all(:, pos) = abs(qk_all(:, pos));
-    else
-        qk_all(:, pos) = -abs(qk_all(:, pos));
-    end
+if ( isempty(pos) || (length(pos) > 1) )
+    error('CHEBFUN:CHEBFUN:remez:badGuess', ...
+        'Trial interpolant too far from optimal');
 end
 
 qk = qk_all(:,pos);       % Keep qk with unchanged sign.
 h = d(pos, pos);          % Levelled reference error.
-disp(h);
 pk = (fk - h*sigma).*qk;  % Vals. of r*q in reference.
 
 % Trial numerator and denominator.
-[xk_leja, idx] = leja(xk, 1, m+1);
-pk_leja = pk(idx);
-w_leja = baryWeights(xk_leja);
-p = chebfun(@(x) bary(x, pk_leja, xk_leja, w_leja), dom, m + 1);
-
-[xk_leja, idx] = leja(xk, 1, n+1);
-qk_leja = qk(idx);
-w_leja = baryWeights(xk_leja);
-q = chebfun(@(x) bary(x, qk_leja, xk_leja, w_leja), dom, n + 1);
-
-nn = round(length(xk)/2);
-fvals = fk - h*sigma;
-xx = xk; xx(nn) = [];
-fx = fvals; fx(nn) = [];
-A = berrut(xx, fx, m, n);
-v = null(A);
-rh = @(t) bary(t, fx, xx, v);
-pqh = @(x) p(x)./q(x);
-%r = chebfun(fh, dom, 'splitting', 'on');
+p = chebfun(@(x) bary(x, pk, xk, w), dom, m + 1);
+q = chebfun(@(x) bary(x, qk, xk, w), dom, n + 1);
 
 end
 
-function [xk, norme, err_handle, flag] = exchange(xk, h, method, f, p, q, Npts, opts)
+function [xk, norme, err_handle, flag] = exchange(xk, h, method, f, p, q, Npts)
 %EXCHANGE   Modify an equioscillation reference using the Remez algorithm.
-%   EXCHANGE(XK, H, METHOD, F, P, Q, W) performs one step of the Remez algorithm
+%   EXCHANGE(XK, H, METHOD, F, P, Q) performs one step of the Remez algorithm
 %   for the best rational approximation of the CHEBFUN F of the target function
 %   according to the first method (METHOD = 1), i.e. exchanges only one point,
 %   or the second method (METHOD = 2), i.e. exchanges all the reference points.
 %   XK is a column vector with the reference, H is the levelled error, P is the
-%   numerator, and Q is the denominator of the trial
-%   rational function P/Q and W is the weight function.
+%   numerator, and Q is the denominator of the trial rational function P/Q.
 %
 %   [XK, NORME, E_HANDLE, FLAG] = EXCHANGE(...) returns the modified reference
 %   XK, the supremum norm of the error NORME (included as an output argument,
@@ -374,42 +371,12 @@ function [xk, norme, err_handle, flag] = exchange(xk, h, method, f, p, q, Npts, 
 %   initial trial function rather than an initial trial reference.
 
 % Compute extrema of the error.
-if ( ~isempty(opts.rh) )
-    % Rational case:
-    r = opts.rh;    
-    err_handle = @(x) feval(f, x) - r(x);    
-    rts = [];
-    %doms = unique(sort([f.domain(:); xk]));
-    doms = unique([f.domain(1); xk; f.domain(end)]);
-    %doms = sort([doms; 0]);
-    warning off
-    for k = 1:length(doms)-1
-        ek = chebfun(@(x) err_handle(x), [doms(k), doms(k+1)], 30 ); 
-        k
-        ek = simplify(ek);
-        
-%         if (length(ek) > 4000 )
-%             %plot(ek);
-%             %disp( 'reconstructing' )
-%             ek = chebfun(@(x) err_handle(x), [doms(k), doms(k+1)], 'eps', 1e-9 ); 
-%             %length(ek)    
-%             %plot(ek)
-%             %drawnow
-%             %pause()
-%         end        
-        
-        rts = [rts; roots(diff(ek), 'nobreaks')];  %#ok<AGROW>
-    end    
-    warning on
-else
-    e_num = (q.^2).*diff(f) - q.*diff(p) + p.*diff(q);
-    rts = roots(e_num, 'nobreaks');
-    rts = unique([f.domain(1); rts; f.domain(end)]);
-    % Function handle output for evaluating the error.
-    err_handle = @(x) feval(f, x) - feval(p, x)./feval(q, x);
-end
-
+e_num = (q.^2).*diff(f) - q.*diff(p) + p.*diff(q);
+rts = roots(e_num, 'nobreaks');
 rr = [f.domain(1) ; rts; f.domain(end)];
+
+% Function handle output for evaluating the error.
+err_handle = @(x) feval(f, x) - feval(p, x)./feval(q, x);
 
 % Select exchange method.
 if ( method == 1 )                           % One-point exchange.
@@ -432,8 +399,6 @@ repeated = diff(r) == 0;
 r(repeated) = [];
 er(repeated) = [];
 
-
-
 % Determine points and values to be kept for the reference set.
 s = r(1);    % Points to be kept.
 es = er(1);  % Values to be kept.
@@ -449,25 +414,17 @@ for i = 2:length(r)
     end
 end
 
-% Of the points we kept, choose n + 2 consecutive ones 
-% that include the maximum of the error.
+% Of the points we kept, choose n + 2 consecutive ones that include the maximum
+% of the error.
 [norme, index] = max(abs(es));
 d = max(index - Npts + 1, 1);
 if ( Npts <= length(s) )
     xk = s(d:d+Npts-1);
     flag = 1;
-
 else
     xk = s;
     flag = 0;
 end
-
-% if (extraPts > 0)
-    
-% else
-%     xk = s;
-%     flag = 0;
-% end
 
 end
 
@@ -477,12 +434,11 @@ end
 % Function called when opts.plotIter is set.
 function doPlotIter(xo, xk, err_handle, dom)
 
-xxk = linspace(dom(1), dom(end), max(3000, 10*length(xk)));
-plot(xo, 0*xo, '.r', 'MarkerSize', 6)   % Old reference.
+xxk = linspace(dom(1), dom(end), 300);
+plot(xo, 0*xo, 'or', 'MarkerSize', 12)   % Old reference.
 holdState = ishold;
 hold on
-plot(xk, 0*xk, 'ok', 'MarkerSize', 3)   % New reference.
-
+plot(xk, 0*xk, '*k', 'MarkerSize', 12)   % New reference.
 plot(xxk, err_handle(xxk))               % Error function.
 if ( ~holdState )                        % Return to previous hold state.
     hold off
@@ -499,186 +455,5 @@ function doDisplayIter(iter, err, h, delta, normf, diffx)
 disp([num2str(iter), '        ', num2str(err, '%5.4e'), '        ', ...
     num2str(abs(h), '%5.4e'), '        ', ...
     num2str(delta/normf, '%5.4e'), '        ', num2str(diffx, '%5.4e')])
-
-end
-
-function status = remezParseFunction(f)
-% Parse a Chebfun to see if Remez
-% can be applied to it
-
-% Add conditions needed on f:
-if ( ~isreal(f) )
-    error('CHEBFUN:CHEBFUN:remez:real', ...
-        'REMEZ only supports real valued functions.');    
-end
-
-if ( numColumns(f) > 1 )
-    error('CHEBFUN:CHEBFUN:remez:quasi', ...
-        'REMEZ does not currently support quasimatrices.');    
-end
-
-if ( issing(f) )
-    error('CHEBFUN:CHEBFUN:remez:singularFunction', ...
-        'REMEZ does not currently support functions with singularities.');
-end
-
-% If all are satisifed, we can go ahead:
-status = 1;
-end
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Input parsing.
-
-function [f, m, n, opts] = parseInput(varargin)
-
-%% Handle the first two arguments:
-f = varargin{1};
-remezParseFunction(f);
-varargin(1) = [];
-
-m = varargin{1};
-varargin(1) = [];
-
-n = 0;
-opts.rationalMode = false;
-if ( ~isempty(varargin) > 0 )
-    if ( isa(varargin{1}, 'double') )
-        n = varargin{1};
-        varargin(1) = [];
-        opts.rationalMode = true;
-    end
-end
-
-if ( isa(m, 'vector') || isa(n, 'vector') || ...
-        m < 0 || n < 0 || m ~= round(m) || n ~= round(n) )
-   error('CHEBFUN:CHEBFUN:remez:degree', ...
-        'Approximant degree must be a non-negative integer.');
-end
-
-
-% Parse name-value option pairs.
-N = m + n;
-opts.tol = 1e-16*(N^2 + 10); % Relative tolerance for deciding convergence.
-opts.maxIter = 40;           % Maximum number of allowable iterations.
-opts.displayIter = false;    % Print output after each iteration.
-opts.plotIter = false;       % Plot approximation at each iteration.
-opts.demoMode = false;
-
-while ( ~isempty(varargin) )
-    if ( strcmpi('tol', varargin{1} ) )
-        opts.tol = varargin{2};
-        varargin(1) =[];
-        varargin(1) =[];        
-    elseif ( strcmpi('maxiter', varargin{1}) )
-        opts.maxIter = varargin{2};        
-        varargin(1) =[];
-        varargin(1) =[];        
-    elseif ( strcmpi('display', varargin{1}) )
-        varargin(1) = [];
-        if ( strcmpi('iter', varargin{1}) )
-            varargin(1) = [];
-        end
-        opts.displayIter = true;        
-    elseif ( strcmpi('demo', varargin{1}) )        
-        varargin(1) = [];
-        opts.demoMode = true;
-        opts.displayIter = true;
-        opts.plotIter = true;        
-    elseif ( strcmpi('plotfcns', varargin{1}) )
-        varargin(1) = [];
-        if ( strcmpi('error', varargin{1}) )
-            varargin(1) = [];
-        end            
-        opts.plotIter = true;        
-    else
-        error('CHEBFUN:CHEBFUN:remez:badInput', ...
-            'Unrecognized sequence of input parameters.')
-    end
-        
-end
-
-end
-
-
-function [xx, pos] = leja(x, startIndex, nPts) 
-% put NPTS from X in a Leja sequence
-% starting from x(startIndex)
-n = length(x);
-p = zeros(n,1);
-pos = zeros(nPts, 1);
-xx = zeros(nPts, 1);
-xx(1) = x(startIndex); 
-pos(1) = startIndex;
-
-for j = 2:nPts
-    % we want to pick the jth point now:
-    for i = 1:n
-        %p(i) = prod(abs(x(i) - xx(1:j-1)));
-        p(i) = sum(log(abs(x(i) - xx(1:j-1)))); % no overflow
-    end  
-    [val,pos(j)] = max(p);
-    xx(j) = x(pos(j));
-end
-
-end
-
-function r = mergePoints(rLeja, rOther, erOther, Npts)
-rLeja   = rLeja(:);
-rOther  = rOther(:);
-erOther = erOther(:);
-
-idx = rOther < rLeja(1);
-rTemp = rOther(idx);
-erTemp = erOther(idx);
-[~, pos] = max(abs(erTemp));
-r = rTemp(pos);
-i = 1;
-while i < length(rLeja)
-    r = [r; rLeja(i)]; 
-    k = i+1;
-    while ( ~any((rOther > rLeja(i)) & (rOther < rLeja(k))) )
-        k = k + 1;
-    end
-    idx = (rOther > rLeja(i)) & (rOther < rLeja(k));    
-    rTemp = rOther(idx);
-    erTemp = erOther(idx);
-    [~, pos] = max(abs(erTemp));
-    r = [r; rTemp(pos)];               
-    i = k;
-end
-r = [r; rLeja(end)];
-idx = rOther > rLeja(end);
-rTemp = rOther(idx);
-erTemp = erOther(idx);
-[~, pos] = max(abs(erTemp));
-r = [r; rTemp(pos)];
-if ( length(r) ~= Npts )
-    warning('You are likely to fail my friend.')
-end
-
-end
-
-function A = berrut(x, f, m, n)
-x = x(:); x = x.';
-f = f(:); f = f.';
-A = zeros(m+n, m+n+1);
-for i = 1:m
-    A(i, :) = x.^(i-1);
-end
-
-for i = 1:n
-    A(m+i,:) = f.*x.^(i-1);
-end
-end
-
-function L = lowner(y, x, r, N)
-
-L = zeros(r, N-r);
-
-for i = 1:r
-    for j = r+1:N
-        L(i,j-r) = (y(i) - y(j))/(x(i)-x(j));
-    end
-end
 
 end
