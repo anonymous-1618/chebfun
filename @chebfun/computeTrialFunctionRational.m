@@ -1,4 +1,4 @@
-function [p, q, rh, pqh, h, interpSuccess] = computeTrialFunctionRational(f, xk, m, n)
+function [p, q, rh, pqh, h, interpSuccess,xsupport] = computeTrialFunctionRational(f, xk, m, n)
 
 % Vector of alternating signs.
 N = m + n;

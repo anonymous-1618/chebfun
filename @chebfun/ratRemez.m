@@ -131,7 +131,7 @@ h = -1; hpre = 0;
 while ( (abs(abs(h)-abs(hpre))/abs(h) > opts.tol) && (iter < opts.maxIter) && (deltaReference > 0) )
     %disp(abs(h)-abs(hpre))    
     hpre = h; 
-    [p, q, rh, pqh, h, interpSuccess] = computeTrialFunctionRational(f, xk, m, n);      
+    [p, q, rh, pqh, h, interpSuccess, xsupport] = computeTrialFunctionRational(f, xk, m, n);      
     
        xx = linspace(-1,1,5000);
        chebfunsetting
@@ -275,6 +275,7 @@ status.delta = deltaLevelError/normf;
 status.iter = iter;
 status.deltaReference = deltaReference;
 status.xk = xk;
+status.xsupport = xsupport;
 
 %{
 p = simplify(p);
@@ -286,7 +287,7 @@ else
 end
 %}
 
-    varargout = {rh};
+    varargout = {rh,status};
     
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
