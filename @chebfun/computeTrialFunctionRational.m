@@ -150,7 +150,7 @@ end
 [v,d,w] = eig(AA,BB);
 
 vini = v;
-    
+        
 if diagscaleR % scale back eigvec
     v = diag(Diagscale)\v;
 end
@@ -224,7 +224,8 @@ for ii = 1:length(xsupport)
 end
 
 rh = @(x) p(x)./q(x); 
-p = nan; q = nan; pqh = nan; interpSuccess = 1; 
+%p = nan; q = nan; 
+pqh = nan; interpSuccess = 1; 
 
 end
 

@@ -287,7 +287,11 @@ else
 end
 %}
 
+if nargout<=2
     varargout = {rh,status};
+else
+    varargout = {p,q,rh,status};    
+end
     
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
