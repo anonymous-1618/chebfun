@@ -302,6 +302,7 @@ end
 %}
 % Form the outputs.
 status.delta = deltaLevelError/normf;
+status.h = h;
 status.iter = iter;
 status.deltaReference = deltaReference;
 status.xk = xk;
@@ -638,85 +639,3 @@ for i = 1:length(x0)
     xk(i) = x0(i) + (x1(idx) - x0(i))/2;
 end
 end
-
-
-function zsupport = aaa(F,ffun,Z,mmax,tol)
-%function [R,N,D,rts,pls,p,J,IJ] = aaa(F,ffun,Z,mmax,tol)
-% aaa.m - Core AAA algorithm
-% outputs function r(z)\approx F(z), F in barycentric form. 
-% F: vector of F(Z)
-% Z: sample points
-% mmax: maximum degree of rational approximant
-% tol: stopping tolerance 
-          if nargin<4, mmax = 50; end              % maximum degree
-          if nargin<5, tol = 0; end            % set tolerance if unspecified
-          M = length(Z);
-          SF = spdiags(F,0,M,M);                   % left scaling matrix
-          J = 1:M;                                 % indices that are not support points
-          zsupport = []; f = []; C = []; IJ = []; R = mean(F); % initializations
-          for m = 1:mmax
-             [~,j] = max(abs(F-R));                % select next support point
-             zsupport = [zsupport; Z(j)];                        % update set of support points
-             f = [f; F(j)];                        % update set of data values             
-             J(J==j) = [];                         % update index vector             
-             if j>1 & j<length(Z-1)
-             Z = [Z(1:j-2);linspace(Z(j-1),Z(j+1),10)';Z(j+2:end)]; % add more to refine, note excludes Z(j)
-%             elseif j==1             Z = [Z(1:j-2);linspace(Z(j-1),Z(j+1),10)';Z(j+2:end)]; % add more to refine, note excludes Z(j)    
-             else
-             Z(j)=[];
-             end
-             F = feval(ffun,Z);
-%             IJ = [IJ j];                          % location of interpolation
-             C = cauchy(Z,F,zsupport);
-             %C = [C 1./(Z-Z(j))];                  % update partial fraction matrix
-             %Sf = diag(f);                         % right scaling matrix
-             Sf = diag(feval(ffun,zsupport));
-             SF = spdiags(F,0,size(Z,1),size(Z,1));                   % left scaling matrix             
-             %keyboard
-             A = SF*C - C*Sf;                      % Loewner matrix             
-             %[~,~,V] = svd(A(J,:),0);              % SVD
-             [~,~,V] = svd(A,0);              % SVD
-             w = V(:,m);                           % weight vector
-             N = C*(w.*f); D = C*w;                % numerator and denominator
-             R = F; R(J) = N(J)./D(J);             % rational approximation
-             err = norm(F-R,inf); disp(err)        % compute max error 
-             if err < tol, break, end            % stop if converged
-          end
-          E = [0 w.'; ones(m,1) diag(zsupport)];          % compute poles of R
-          B = eye(m+1); B(1,1) = 0;                % via generalized
-          p = eig(E,B); p = p(~isinf(p))           % eigenvalue problem
-          
-         D = @(z) sum(w./(z-zsupport));               % create function handles
-         N = @(z) sum((w.*f)./(z-zsupport));
-         
-         pls = []; rts = []; R = [];
-         %{
-         pls = baryroots_yuji(Z(IJ),w); % roots and poles
-         rts = baryroots_yuji(Z(IJ),w.*f);
-         R = @(z)RfromND(z,N,D,Z(IJ),f);  
-         %}
-end
-
-function R = RfromND(z,N,D,ZIJ,FZIJ)        %  R = N/D but needs to be set to f(z) for z in Z(IJ)
-R = zeros(size(z));
-for ii = 1:length(z)
-if min(abs(z(ii)-ZIJ))>0
-    R(ii) = N(z(ii))./D(z(ii));
-else                                % z at interpolation point
-    [~,ix] = min(abs(z(ii)-ZIJ)); 
-    R(ii) = FZIJ(ix);
-end
-end
-end
-
-
-function C = cauchy(x, y, xsupport)
-% Build Cauchy matrix of size lenght(S) by length(T) from data in x and y.
-
-% Compute the rowwise numerators and denominators in L.
-X = zeros(length(y),length(xsupport));
-for ii = 1:length(y)
-    X(ii,:) = x(ii) - xsupport;  % x(s_i) - x(t_j)
-end
-C = 1./X ;  % C_{i,j} = 1 / (x(s_i)-x(t_j))
-end % end of LOEWNER()
