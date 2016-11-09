@@ -605,7 +605,8 @@ plot(xx, err_handle(xx));
 hold on
 plot(s, es,'or');
 hold off
-pause()
+drawnow
+%pause()
 
 
 % Of the points we kept, choose n + 2 consecutive ones 
