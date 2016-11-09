@@ -32,7 +32,9 @@ end
    
 if ( ~isempty(xk) )
     for k = 1:length(doms)-1
-        ek = chebfun(@(x) err_handle(x), [doms(k), doms(k+1)], 200, 'eps', 1e-12);     
+        ek = chebfun(@(x) err_handle(x), [doms(k), doms(k+1)], 24, 'eps', 1e-12); 
+        %plotcoeffs(ek);
+        %pause
         ek = simplify(ek);
         rts = [rts; roots(diff(ek), 'nobreaks')];  %#ok<AGROW>
     end    

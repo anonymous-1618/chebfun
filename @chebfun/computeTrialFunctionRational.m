@@ -108,9 +108,16 @@ end
 xsupport = (xk(1:2:end-1)+xk(2:2:end))/2;
 %xleja = leja_ordering(xsupport);xsupport = xleja(1:n+1);
 
-C = zeros(length(xk),length(xsupport)); % Vandermonde (or basis) matrix
+% C = zeros(length(xk),length(xsupport)); % Vandermonde (or basis) matrix
+% C = zeros(length(xk),length(xsupport)+1);
+C = zeros(length(xk),length(xsupport)+abs(m-n));
+
 for ii = 1:length(xk)
-C(ii,:) = 1./(xk(ii)-xsupport);
+    C(ii,1:end-abs(m-n)) = 1./(xk(ii)-xsupport);
+end
+
+if(abs(m-n) ~= 0)
+    C(:,end) = ones(length(xk),1);
 end
 
 AA = [C(:,1:m+1) diag(fk)*C(:,1:n+1)]; % solving Fq (1 pm h(sign)) = p 
@@ -175,7 +182,7 @@ end
    pos1 = pos;
 %}
    
-qk_all = C(:,1:n+1)*v(m+1+1:end,:); 
+qk_all = C(:,1:n+1)*v(m+2:end,:); 
 node = @(z) prod(z-xsupport); % needed to check sign 
 for ii = 1:length(xk)
 nodevec(ii) = node(xk(ii));
@@ -209,18 +216,27 @@ condei = norm(w(:,pos))*norm(vini(:,pos))./(w(:,pos)'*BB*vini(:,pos))
 
 %keyboard
 
-h = -h; 
-h
+h = -h 
 
 
 q = @(x) 0;
 for ii = 1:length(xsupport)
    q = @(x) q(x) + v(m+1+ii,pos)./(x-xsupport(ii));
 end
+if m < n
+    q = @(x) q(x) + v(end,pos);
+end
 q = @(x)-q(x);
+
+
+
 p = @(x) 0;
 for ii = 1:length(xsupport)
    p = @(x) p(x) + v(ii,pos)./(x-xsupport(ii));
+end
+
+if m > n
+    p = @(x) p(x) + v(length(xsupport)+1,pos);
 end
 
 rh = @(x) p(x)./q(x); 
